@@ -1,0 +1,25 @@
+{
+  "name": "hubbleservice",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dsorlov/hubbleservice.git"
+  },
+  "author": "Daniel Sörlöv <daniel@sorlov.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dsorlov/hubbleservice/issues"
+  },
+  "homepage": "https://github.com/dsorlov/hubbleservice#readme",
+  "dependencies": {
+    "axios": "^0.19.2",
+    "express": "^4.17.1",
+    "netcat": "^1.5.0",
+    "vhost": "^3.0.2"
+  }
+}
