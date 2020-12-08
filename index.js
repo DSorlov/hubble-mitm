@@ -11,11 +11,15 @@ const axios       = require('axios');
 console.log("Virtual Hubble v2006.01");
 console.log();
 
+const agent = new https.Agent({  
+      rejectUnauthorized: false
+  });
+
 //Support function to create a context for https
 function createContext(domain) {
     return tls.createSecureContext({
-        key: fs.readFileSync(path.join('./certs',domain+'.key')),
-        cert: fs.readFileSync(path.join('./certs',domain+'.crt')),
+        key: fs.readFileSync(path.join('./certs/fakehubble.key')),
+        cert: fs.readFileSync(path.join('./certs/fakehubble.crt')),
       });
 }
 
@@ -41,21 +45,21 @@ async function downloadCert (url,filename) {
 // Just pass the request on to the backend
 function passthrough(uri,method,req,res,cb=undefined) {
     if (method==='post') {
-        axios.post(uri, req.body, {headers: req.headers}).then((response) => {
+        axios.post(uri, req.body, {headers: req.headers, httpsAgent: agent}).then((response) => {
             res.status(200).send(response.data);        
             if (cb) {cb(response.data)};        
         }, (error) => {
             res.status(400).send(error.data);
         });
     } else if (method==='delete') {
-        axios.delete(uri, {headers: req.headers}).then((response) => {
+        axios.delete(uri, {headers: req.headers, httpsAgent: agent}).then((response) => {
             res.status(200).send(response.data);        
             if (cb) {cb(response.data)};        
         }, (error) => {
             res.status(400).send(error.data);
         });
     } else {
-        axios.get(uri, {headers: req.headers}).then((response) => {
+        axios.get(uri, {headers: req.headers, httpsAgent: agent}).then((response) => {
             res.status(200).send(response.data);
             if (cb) {cb(response.data)};        
         }, (error) => {
@@ -69,7 +73,7 @@ function authentication_token(host, req, res) {
     var login = req.body.login
 
     console.log("["+host+"]: Requested authentication_token.json for " + login);
-    axios.post('https://'+host+'/v4/users/authentication_token.json', req.body, {headers: req.headers}
+    axios.post('https://'+host+'/v4/users/authentication_token.json', req.body, {headers: req.headers, httpsAgent: agent}
     ).then((response) => {
 
         console.log("   > Authentication succeeded");
@@ -108,6 +112,10 @@ function me(host, req, res) {
 
 // Define the sites we are running
 const sites = {
+    "ota.hubble.in": {
+        context: createContext('ota.hubble.in'),
+        app: express()
+    },
     "cs.hubble.in": {
         context: createContext('cs.hubble.in'),
         app: express()
@@ -135,7 +143,7 @@ sites['cs.hubble.in'].app.get('/v1/devices/config_details.json', function (req, 
     var device_token = req.query["device_token"];
     console.log("[cs.hubble.in]: Requested config_details.json for "+device_token);
 
-    axios.get('https://cs.hubble.in/v1/devices/config_details.json?device_token='+device_token, {headers: req.headers}
+    axios.get('https://cs.hubble.in/v1/devices/config_details.json?device_token='+device_token, {headers: req.headers, httpsAgent: agent}
     ).then((response) => {
 
         downloadCert(response.data.data.certificate_data.ca_crt,"device_"+device_token+"_ca.crt");
@@ -162,7 +170,7 @@ sites['api.hubble.in'].app.get('/v1/users/device_models', function(req, res){
     var api_key = req.query["api_key"];
     console.log("[api.hubble.in]: Requested device_models using api_key "+api_key);
     
-   axios.get('https://api.hubble.in/v1/users/device_models?api_key='+api_key, {headers: req.headers}
+   axios.get('https://api.hubble.in/v1/users/device_models?api_key='+api_key, {headers: req.headers, httpsAgent: agent}
     ).then((response) => {
 
         for(let registration in response.data) {
@@ -182,14 +190,26 @@ sites['api.hubble.in'].app.get('/v6/devices/own.json', function(req, res){
     var api_key = req.query["api_key"];
     console.log("[api.hubble.in]: Requested device_models using api_key "+api_key);
     
-   axios.get('https://api.hubble.in/v6/devices/own.json?api_key='+api_key, {headers: req.headers}
+   axios.get('https://api.hubble.in/v6/devices/own.json?api_key='+api_key, {headers: req.headers, httpsAgent: agent}
     ).then((response) => {
 
         for(let device in response.data.data) {
+            var shortcutContent = "rtsp://"+ 
+                response.data.data[device].p2p_credentials.p2pId + ":" +
+                response.data.data[device].p2p_credentials.p2pKey + "@" +
+                response.data.data[device].device_location.local_ip + ":6667/blinkhd";
+            console.log("   > Created url file for device "+response.data.data[device].name);
+            fs.writeFileSync('./data/url_'+response.data.data[device].name+".txt", shortcutContent);
+                
+            //Modyfy to intercept
+            response.data.data[device].device_location.local_ip = "192.168.100.210";
+            response.data.data[device].device_location.remote_ip = "192.168.100.210";
+            response.data.data[device].device_location.local_port_1 = "6667";
+            response.data.data[device].mac_address = "281878FFDB54";
+
             console.log("   > Created owner file "+response.data.data[device].registration_id);
             fs.writeFileSync('./data/own_'+response.data.data[device].registration_id+".json", JSON.stringify(response.data.data[device]));
         }    
-
         res.status(200).send(response.data);        
     }, (error) => {
         console.log("   > Failed");
@@ -197,6 +217,34 @@ sites['api.hubble.in'].app.get('/v6/devices/own.json', function(req, res){
     });    
     
 });
+
+var net = require('net');
+net.createServer(function(socket){
+    socket.on('data', function(data){
+        socket.write(data.toString())
+    });
+}).listen(6667);
+
+var net = require('net');
+net.createServer(function(socket){
+    socket.on('data', function(data){
+        socket.write(data.toString())
+    });
+}).listen(8080);
+
+var net = require('net');
+net.createServer(function(socket){
+    socket.on('data', function(data){
+        socket.write(data.toString())
+    });
+}).listen(51000);
+
+var net = require('net');
+net.createServer(function(socket){
+    socket.on('data', function(data){
+        socket.write(data.toString())
+    });
+}).listen(53000);
 
 sites['api.hubble.in'].app.post('/v4/users/authentication_token.json', function(req, res) {
     authentication_token('api.hubble.in',req,res);
@@ -222,6 +270,7 @@ sites['api.hubble.in'].app.post('/v6/user_consents', function(req, res) {
     console.log("[api.hubble.in]: Passthrough consents using api_key "+api_key);
     passthrough('https://api.hubble.in/v6/user_consents?api_key='+api_key,'post',req,res)
 });
+
 
 
 sites['api.hubble.in'].app.get('/v6/user_consents', function(req, res) {
@@ -304,6 +353,29 @@ sites['api.hubble.in'].app.get('/v1/devices/:id/check_status.json', function(req
     passthrough('https://api.hubble.in/v1/devices/'+id+'/check_status.json?api_key='+api_key,'get',req,res)
 });
 
+sites['api.hubble.in'].app.get('/v1/devices/:id/attribute', function(req, res) {
+    var api_key = req.query["api_key"];
+    var id = req.params["id"];
+    console.log("[api.hubble.in]: Passthrough device attributes using api_key "+api_key);
+    passthrough('https://api.hubble.in/v1/devices/'+id+'/attribute?api_key='+api_key,'get',req,res)
+});
+
+sites['api.hubble.in'].app.post('/v1/devices/:id/attribute', function(req, res) {
+    var api_key = req.query["api_key"];
+    var id = req.params["id"];
+    console.log("[api.hubble.in]: Passthrough post device attributes using api_key "+api_key);
+    passthrough('https://api.hubble.in/v1/devices/'+id+'/attribute?api_key='+api_key,'post',req,res)
+});
+
+sites['api.hubble.in'].app.get('/v1/subscription_plans.json', function(req, res) {
+    var api_key = req.query["api_key"];
+    var page = req.params["page"];
+    var size = req.params["size"];
+    console.log("[api.hubble.in]: Passthrough subcription plans for api_key "+api_key);
+    passthrough('https://api.hubble.in/v1/subscription_plans.json?api_key='+api_key+'&page='+page+'&size='+size,'get',req,res)
+});
+
+
 sites['api.hubble.in'].app.post('/v1/users/me/change_password.json', function(req, res) {
     var api_key = req.query["api_key"];
     console.log("[api.hubble.in]: Passthrough change password using api_key "+api_key);
@@ -374,7 +446,7 @@ sites['bootstrap.hubble.in'].app.post('/v1/user/me.json', function(req, res){
 
 sites['bootstrap.hubble.in'].app.get('/v6/bootstrap/info', function(req,res) {
     console.log("[bootstrap.hubble.in]: Passthrough Bootstrap Info");
-    axios.get('https://bootstrap.hubble.in/v6/bootstrap/info', {headers: req.headers}).then((response) => {
+    axios.get('https://bootstrap.hubble.in/v6/bootstrap/info', {headers: req.headers, httpsAgent: agent}).then((response) => {
         res.status(200).send(response.data);        
     }, (error) => {
         res.status(400).send(error.data);
@@ -413,8 +485,8 @@ var secureOptions = {
         return cb(Error('No such host found'),null);
       }
     },
-    key: fs.readFileSync(path.join('./certs','api.hubble.in.key')).toString(),
-    cert: fs.readFileSync(path.join('./certs','api.hubble.in.crt')).toString()
+    key: fs.readFileSync(path.join('./certs','fakehubble.key')).toString(),
+    cert: fs.readFileSync(path.join('./certs','fakehubble.crt')).toString()
   };
 
 var httpsServer = https.createServer(secureOptions, app);  

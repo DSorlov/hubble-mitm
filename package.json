@@ -19,6 +19,7 @@
   "dependencies": {
     "axios": "^0.19.2",
     "express": "^4.17.1",
+    "net": "^1.0.2",
     "netcat": "^1.5.0",
     "vhost": "^3.0.2"
   }
