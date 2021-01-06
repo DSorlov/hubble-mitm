@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/dsorlov/hubbleservice#readme",
   "dependencies": {
-    "axios": "^0.19.2",
+    "axios": "^0.21.1",
     "express": "^4.17.1",
     "net": "^1.0.2",
     "netcat": "^1.5.0",
